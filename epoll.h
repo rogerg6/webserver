@@ -9,6 +9,7 @@
 #include <sys/socket.h>
 
 #include "threadPool.h"
+// #include "threadpool.h"
 #include "util.h"
 
 const int MAX_EVENT_NUMBER = 10000;
@@ -72,7 +73,9 @@ public:
 
     void HandleEvents(int listenfd, ThreadPool &th_pool) {
         int num = epoll_wait(epollfd_, events_, MAX_EVENT_NUMBER + 1, -1);
-        if (num < 0 && errno != EINTR) {
+        if (num == 0)
+            return;
+        else if (num < 0 && errno != EINTR) {
             perror("epoll wait failed.");
             return;
         }
@@ -83,21 +86,36 @@ public:
 
             if (fd == listenfd) {
                 // handle connection
-                printf("Got a new connection.\n");
+                // printf("Got a new connection.\n");
                 struct sockaddr_in client_address;
-                socklen_t          client_addrlength = sizeof(client_address);
-                int                connfd            = -1;
-                if ((connfd = accept(
-                         listenfd, (struct sockaddr *)&client_address, &client_addrlength)) != -1) {
-                    Request *newreq = new Request(connfd);
+                memset(&client_address, 0, sizeof(struct sockaddr_in));
+                socklen_t client_addrlength = sizeof(client_address);
+                int       connfd            = -1;
 
+                // 处理connection必须用while一下子把所有的连接都接入
+                while ((connfd = accept(
+                            listenfd, (struct sockaddr *)&client_address, &client_addrlength)) >
+                       0) {
+                    if (setSockNonBlocking(connfd) < 0) {
+                        perror("setnonblocking error.");
+                        close(connfd);
+                        continue;
+                    }
+                    Request *newreq = new Request(connfd);
                     uint32_t events = EPOLLIN | EPOLLET | EPOLLONESHOT;
-                    setSockNonBlocking(connfd);
                     AddFd(connfd, newreq, events);
                 }
             } else {
                 // handle request
-                printf("Got a new request.\n");
+                // printf("Got a new request.\n");
+                // 排除错误事件
+                if ((events_[i].events & EPOLLERR) || (events_[i].events & EPOLLHUP) ||
+                    (!(events_[i].events & EPOLLIN))) {
+                    printf("Error event\n");
+                    delete rq;
+                    continue;
+                }
+
                 task_t task;
                 task.func = handFunc;
                 task.args = rq;

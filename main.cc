@@ -3,6 +3,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <netinet/in.h>
+#include <signal.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -11,11 +12,20 @@
 #include "threadPool.h"
 #include "util.h"
 
+void handle_for_sigpipe() {
+    struct sigaction sa;
+    memset(&sa, '\0', sizeof(sa));
+    sa.sa_handler = SIG_IGN;
+    sa.sa_flags   = 0;
+    if (sigaction(SIGPIPE, &sa, NULL)) return;
+}
+
 int main(int ac, char *av[]) {
     if (ac < 3) {
         printf("Usage: %s ip port.\n", basename(av[0]));
         return -1;
     }
+    handle_for_sigpipe();
 
     char    *ip   = av[1];
     uint16_t port = atoi(av[2]);
@@ -34,7 +44,7 @@ int main(int ac, char *av[]) {
     int ret = bind(listenfd, (struct sockaddr *)&address, sizeof(address));
     assert(ret != -1);
 
-    ret = listen(listenfd, 5);
+    ret = listen(listenfd, 1024);
     assert(ret != -1);
 
     // init thread pool, 10 work threads
@@ -46,7 +56,10 @@ int main(int ac, char *av[]) {
     Request *req = new Request();
     req->SetFd(listenfd);
     uint32_t events = EPOLLIN | EPOLLET;
-    setSockNonBlocking(listenfd);
+    if (setSockNonBlocking(listenfd) < 0) {
+        perror("setnonblocking error.");
+        return -2;
+    }
     epoller.AddFd(listenfd, req, events);
 
     while (true) {

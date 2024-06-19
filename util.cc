@@ -1,9 +1,13 @@
 #include "util.h"
 #include <fcntl.h>
 
-int readn(int fd, char *buf, int len) {}
+int readn(int fd, char *buf, int len) {
+    return 0;
+}
 
-int writen(int fd, char *buf, int len) {}
+int writen(int fd, char *buf, int len) {
+    return 0;
+}
 
 int setSockNonBlocking(int fd) {
     int flag = fcntl(fd, F_GETFL, 0);

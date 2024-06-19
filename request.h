@@ -6,6 +6,7 @@
 #include <string>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <unistd.h>
 
 enum CHECK_STATE { CHECKING_REQLINE, CHECKING_HEADER, CHECKING_BODY };
 enum LINE_STATUS { LINE_OK, LINE_BAD, LINE_OPEN };
@@ -18,20 +19,24 @@ public:
     Request() {}
     Request(int confd)
         : fd_(confd) {}
+    ~Request() { close(fd_); }
 
     HTTP_CODE Parse() {
         char        buf[BUFLEN];
         CHECK_STATE state = CHECK_STATE::CHECKING_REQLINE;
         HTTP_CODE   ret;
+        bool        is_err = false;
 
         while (1) {
             // TODO: 数据很多, buf可能不够,需要度多次
             int rn = recv(fd_, buf, BUFLEN, 0);
             if (rn < 0) {
                 perror("Reading failed.\n");
+                is_err = true;
                 break;
             } else if (rn == 0) {
                 perror("Remote client has closed connection.\n");
+                is_err = true;
                 break;
             }
 
@@ -68,31 +73,76 @@ public:
             }
 
             if (linestauts == LINE_STATUS::LINE_BAD)
-                return BAD_REQ;
+                return HTTP_CODE::BAD_REQ;
             else if (linestauts == LINE_STATUS::LINE_OPEN)
                 continue;
         }
+
+        if (is_err) {
+            return BAD_REQ;
+        }
+        return GET_REQ;
     }
 
     void handle() {
+#if 1
         HTTP_CODE ret = Parse();
         if (ret == GET_REQ) {
             char header[BUFLEN];
             char resp[BUFLEN] = "Hello from cpp web server.";
 
-            sprintf(header, "HTTP/1.1 %d %s\r\n", 200, "OK");
-            sprintf(header, "%sConnection: keep-alive\r\n", header);
-            sprintf(header, "%sKeep-Alive: timeout=%d\r\n", header, 500);
-            sprintf(header, "%sContent-type: text/plain\r\n", header);
-            sprintf(header, "%sContent-length: %ld\r\n\r\n", header, strlen(resp));
+            sprintf(header,
+                    "HTTP/1.1 %d %s\r\n"
+                    "Connection: keep-alive\r\n"
+                    "Keep-Alive: timeout=%d\r\n"
+                    "Content-type: text/plain\r\n"
+                    "Content-length: %lu\r\n\r\n",
+                    200,
+                    "OK",
+                    500,
+                    strlen(resp));
 
             send(fd_, header, strlen(header), 0);
             send(fd_, resp, strlen(resp), 0);
+
+            // http短连接, 则关闭. http1.1默认是长连接
+            if (req_headers_["Connection:"] == "close") {
+                // printf("close connection.\n\n");
+                delete this;
+            } else {
+                // usleep(500);
+                delete this;
+            }
+        } else {
+            printf("BAD_REQ\n");
+            delete this;
         }
+#else
+        char buf[BUFLEN];
+        while (1) {
+            // TODO: 数据很多, buf可能不够,需要度多次
+            int rn = recv(fd_, buf, BUFLEN, 0);
+            if (rn < 0) {
+                perror("Reading failed.\n");
+                break;
+            } else if (rn == 0) {
+                perror("Remote client has closed connection.\n");
+                break;
+            }
+        }
+        char resp[BUFLEN] = "Hello from cpp web server.";
+        send(fd_, resp, strlen(resp), 0);
+        delete this;
+
+#endif
     }
 
-    void SetFd(int fd) { fd_ = fd; }
-    int  Fd() { return fd_; }
+    void SetFd(int fd) {
+        fd_ = fd;
+    }
+    int Fd() {
+        return fd_;
+    }
 
 private:
     LINE_STATUS ParseLine(char *buf, int &tail, int nread) {
@@ -125,29 +175,36 @@ private:
 
     HTTP_CODE ParseRequestLine(char *buf) {
         char *p = strpbrk(buf, " \t");
-        if (!p) return HTTP_CODE::BAD_REQ;
+        if (!p) {
+            return HTTP_CODE::BAD_REQ;
+        }
         *p++ = '\0';
 
         // method
         char *method = buf;
-        if (strcasecmp(method, "GET") == 0)
-            printf("Method is GET\n");
-        else
-            return BAD_REQ;
+        if (strcasecmp(method, "GET") == 0) {
+            // printf("Method is GET\n");
+            method_ = "GET";
+        } else
+            return HTTP_CODE::BAD_REQ;
 
         // url
         char *url = p;
         p         = strpbrk(p, " \t");
-        if (!p) return HTTP_CODE::BAD_REQ;
+        if (!p) {
+            return HTTP_CODE::BAD_REQ;
+        }
         *p++ = '\0';
-        printf("Url is %s\n", url);
+        // printf("Url is %s\n", url);
+        url_ = std::string(url);
 
         // version
         char *version = p;
-        if (strcasecmp(version, "HTTP/1.1") == 0)
-            printf("Version is HTTP/1.1\n");
-        else
-            return BAD_REQ;
+        if (strcasecmp(version, "HTTP/1.1") == 0) {
+            // printf("Version is HTTP/1.1\n");
+            version_ = "HTTP/1.1";
+        } else
+            return HTTP_CODE::BAD_REQ;
 
         return GET_REQ;
     }
@@ -157,21 +214,27 @@ private:
         if (buf[0] == '\0') return GET_REQ;
 
         char *p = strpbrk(buf, " \t");
-        if (!p) return HTTP_CODE::BAD_REQ;
+        if (!p) {
+            return HTTP_CODE::BAD_REQ;
+        }
         *p++ = '\0';
 
         char *key   = buf;
         char *value = p;
-        printf("%s %s\n", key, value);
+        // printf("%s %s\n", key, value);
+        std::string k(key);
+        std::string v(value);
+        req_headers_[k] = v;
         return NO_REQ;
     }
 
 
-    int         fd_;
+    int         fd_ = -1;
     std::string content_;   // body
 
     std::string                        method_;
     std::string                        url_;
+    std::string                        version_;   // http version
     std::map<std::string, std::string> req_headers_;
 };
 
