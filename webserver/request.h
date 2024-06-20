@@ -120,7 +120,6 @@ public:
 #else
         char buf[BUFLEN];
         while (1) {
-            // TODO: 数据很多, buf可能不够,需要度多次
             int rn = recv(fd_, buf, BUFLEN, 0);
             if (rn < 0) {
                 perror("Reading failed.\n");
@@ -236,6 +235,35 @@ private:
     std::string                        url_;
     std::string                        version_;   // http version
     std::map<std::string, std::string> req_headers_;
+};
+
+struct EchoService {
+    EchoService() {}
+    EchoService(int fd)
+        : fd(fd) {}
+    ~EchoService() {
+        if (fd > 0) close(fd);
+    }
+
+    void handleRequest() {
+        char buf[BUFLEN];
+        int  rn = -1;
+        while (1) {
+            rn = read(fd, buf, BUFLEN);
+            if (rn < 0) {
+                perror("Reading failed");
+                break;
+            } else if (rn == 0) {
+                perror("Remote client has closed connection");
+                break;
+            } else {
+                if (write(fd, buf, rn) < 0) perror("write failed.");
+            }
+        }
+        delete this;
+    }
+
+    int fd;
 };
 
 

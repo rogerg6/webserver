@@ -12,6 +12,9 @@
 #include "threadPool.h"
 #include "util.h"
 
+const char *ip   = "127.0.0.1";
+uint16_t    port = 8888;
+
 void handle_for_sigpipe() {
     struct sigaction sa;
     memset(&sa, '\0', sizeof(sa));
@@ -21,14 +24,7 @@ void handle_for_sigpipe() {
 }
 
 int main(int ac, char *av[]) {
-    if (ac < 3) {
-        printf("Usage: %s ip port.\n", basename(av[0]));
-        return -1;
-    }
     handle_for_sigpipe();
-
-    char    *ip   = av[1];
-    uint16_t port = atoi(av[2]);
 
     struct sockaddr_in address;
     bzero(&address, sizeof(address));
@@ -40,10 +36,8 @@ int main(int ac, char *av[]) {
     assert(listenfd >= 0);
     int reuse = 1;
     setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
-
     int ret = bind(listenfd, (struct sockaddr *)&address, sizeof(address));
     assert(ret != -1);
-
     ret = listen(listenfd, 1024);
     assert(ret != -1);
 
@@ -52,15 +46,14 @@ int main(int ac, char *av[]) {
     th_pool.Start();
 
     // init epoll
-    Epoller  epoller;
-    Request *req = new Request();
-    req->SetFd(listenfd);
-    uint32_t events = EPOLLIN | EPOLLET;
+    Epoller      epoller;
+    EchoService *echo_req = new EchoService(listenfd);
+    uint32_t     events   = EPOLLIN | EPOLLET;
     if (setSockNonBlocking(listenfd) < 0) {
         perror("setnonblocking error.");
         return -2;
     }
-    epoller.AddFd(listenfd, req, events);
+    epoller.AddFd(listenfd, echo_req, events);
 
     while (true) {
         epoller.HandleEvents(listenfd, th_pool);

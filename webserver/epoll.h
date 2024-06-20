@@ -15,9 +15,14 @@
 const int MAX_EVENT_NUMBER = 10000;
 const int LISTENQ          = 1024;
 
-void handFunc(void *args) {
+void handHttpFunc(void *args) {
     Request *rq = (Request *)args;
     rq->handle();
+}
+
+void handleEchoFunc(void *args) {
+    EchoService *rq = (EchoService *)args;
+    rq->handleRequest();
 }
 
 class Epoller {
@@ -81,8 +86,8 @@ public:
         }
 
         for (int i = 0; i < num; i++) {
-            Request *rq = (Request *)events_[i].data.ptr;
-            int      fd = rq->Fd();
+            EchoService *rq = (EchoService *)events_[i].data.ptr;
+            int          fd = rq->fd;
 
             if (fd == listenfd) {
                 // handle connection
@@ -101,8 +106,8 @@ public:
                         close(connfd);
                         continue;
                     }
-                    Request *newreq = new Request(connfd);
-                    uint32_t events = EPOLLIN | EPOLLET | EPOLLONESHOT;
+                    EchoService *newreq = new EchoService(connfd);
+                    uint32_t     events = EPOLLIN | EPOLLET | EPOLLONESHOT;
                     AddFd(connfd, newreq, events);
                 }
             } else {
@@ -117,7 +122,7 @@ public:
                 }
 
                 task_t task;
-                task.func = handFunc;
+                task.func = handleEchoFunc;
                 task.args = rq;
                 th_pool.AddTask(task);
             }
