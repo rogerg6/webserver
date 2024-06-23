@@ -50,7 +50,7 @@ int main(int ac, char *av[]) {
         connfd = accept(listenfd, (struct sockaddr *)&client_address, &client_addrlength);
         if (connfd < 0) {
             perror("accept failed");
-            break;
+            continue;
         }
 
         EchoService *es = new EchoService(connfd);

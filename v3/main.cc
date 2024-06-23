@@ -63,7 +63,6 @@ int main(int ac, char *av[]) {
             continue;
         }
 
-        // create a thread per request
         EchoService *es = new EchoService(connfd);
         task_t       task;
         task.func = handleFunc;

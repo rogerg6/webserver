@@ -22,6 +22,7 @@ struct EchoService {
         char buf[BUFLEN];
         int  rn = -1;
         while (1) {
+            // 非阻塞读取
             rn = read(fd, buf, BUFLEN);
             if (rn < 0) {
                 perror("Reading failed");
@@ -34,9 +35,9 @@ struct EchoService {
             if (write(fd, buf, rn) < 0) {
                 perror("write failed");
             }
-            delete this;
             break;
         }
+        delete this;
     }
 
     int fd;
